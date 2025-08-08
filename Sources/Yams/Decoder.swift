@@ -53,12 +53,7 @@ public class YAMLDecoder {
     public func decode<T>(_ type: T.Type = T.self,
                           from node: Node,
                           userInfo: [CodingUserInfoKey: Any] = [:]) throws -> T where T: Swift.Decodable {
-        var finalUserInfo = userInfo
-        if let dealiasingStrategy = options.aliasDereferencingStrategy {
-            finalUserInfo[.aliasDereferencingStrategy] = dealiasingStrategy
-        }
-
-        let decoder = _Decoder(referencing: node, userInfo: finalUserInfo)
+        let decoder = decoder(from: node, userInfo: userInfo)
         let container = try decoder.singleValueContainer()
         return try container.decode(type)
     }
@@ -75,24 +70,8 @@ public class YAMLDecoder {
     public func decode<T>(_ type: T.Type = T.self,
                           from yaml: String,
                           userInfo: [CodingUserInfoKey: Any] = [:]) throws -> T where T: Swift.Decodable {
-        do {
-            let parser = try Parser(yaml: yaml, resolver: Resolver([.merge]), encoding: options.encoding)
-            // ^ the parser holds the references to Anchors while parsing,
-            return try withExtendedLifetime(parser) {
-                // ^ so we hold an explicit reference to the parser during decoding
-                let node = try parser.singleRoot() ?? ""
-                // ^ nodes only have weak references to Anchors (the Anchors would disappear if not held by the parser)
-                return try self.decode(type, from: node, userInfo: userInfo)
-                // ^ if the decoded type or contained types are YamlAnchorCoding, 
-                // those types have taken ownership of Anchors.
-                // Otherwise the Anchors are deallocated when this function exits just like Tag and Mark
-            }
-        } catch let error as DecodingError {
-            throw error
-        } catch {
-            throw DecodingError.dataCorrupted(.init(codingPath: [],
-                                                    debugDescription: "The given data was not valid YAML.",
-                                                    underlyingError: error))
+        return try processNode(type, from: yaml, userInfo: userInfo) { type, node, userInfo in
+            try self.decode(type, from: node, userInfo: userInfo)
         }
     }
 
@@ -119,6 +98,45 @@ public class YAMLDecoder {
     @available(*, deprecated, renamed: "options.encoding")
     public var encoding: Parser.Encoding {
         options.encoding
+    }
+}
+
+extension YAMLDecoder {
+    private func decoder(from node: Node, userInfo: [CodingUserInfoKey: Any]) -> _Decoder {
+        var finalUserInfo = userInfo
+        if let dealiasingStrategy = options.aliasDereferencingStrategy {
+            finalUserInfo[.aliasDereferencingStrategy] = dealiasingStrategy
+        }
+
+        let decoder = _Decoder(referencing: node, userInfo: finalUserInfo)
+
+        return decoder
+    }
+
+    @inline(__always)
+    private func processNode<T>(_ type: T.Type,
+                                from yaml: String,
+                                userInfo: [CodingUserInfoKey: Any],
+                                with block: (T.Type, Node, [CodingUserInfoKey: Any]) throws -> T) throws -> T {
+        do {
+            let parser = try Parser(yaml: yaml, resolver: Resolver([.merge]), encoding: options.encoding)
+            // ^ the parser holds the references to Anchors while parsing,
+            return try withExtendedLifetime(parser) {
+                // ^ so we hold an explicit reference to the parser during decoding
+                let node = try parser.singleRoot() ?? ""
+                // ^ nodes only have weak references to Anchors (the Anchors would disappear if not held by the parser)
+                return try block(type, node, userInfo)
+                // ^ if the decoded type or contained types are YamlAnchorCoding,
+                // those types have taken ownership of Anchors.
+                // Otherwise the Anchors are deallocated when this function exits just like Tag and Mark
+            }
+        } catch let error as DecodingError {
+            throw error
+        } catch {
+            throw DecodingError.dataCorrupted(.init(codingPath: [],
+                                                    debugDescription: "The given data was not valid YAML.",
+                                                    underlyingError: error))
+        }
     }
 }
 
@@ -509,5 +527,61 @@ extension YAMLDecoder: TopLevelDecoder {
     }
 }
 #endif
+
+// MARK: DecodableWithConfiguration
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension YAMLDecoder {
+    public func decode<T>(_ type: T.Type,
+                          from yamlData: Data,
+                          configuration: T.DecodingConfiguration) throws -> T where T: DecodableWithConfiguration {
+        try self.decode(type, from: yamlData, configuration: configuration, userInfo: [:])
+    }
+
+    public func decode<T, C>(_ type: T.Type,
+                             from yamlData: Data,
+                             configuration: C.Type) throws -> T where T: DecodableWithConfiguration, C: DecodingConfigurationProviding, T.DecodingConfiguration == C.DecodingConfiguration { // swiftlint:disable:this line_length
+        try self.decode(type, from: yamlData, configuration: configuration, userInfo: [:])
+    }
+
+    public func decode<T, C>(_ type: T.Type,
+                             from yamlData: Data,
+                             configuration: C.Type,
+                             userInfo: [CodingUserInfoKey: Any]) throws -> T where T: Foundation.DecodableWithConfiguration, C: DecodingConfigurationProviding, T.DecodingConfiguration == C.DecodingConfiguration { // swiftlint:disable:this line_length
+        try self.decode(type, from: yamlData, configuration: configuration.decodingConfiguration, userInfo: userInfo)
+    }
+
+    /// Decode a `Decodable` type from a given `Node` and optional user info mapping.
+    ///
+    /// - parameter type:    `Decodable` type to decode.
+    /// - parameter node:     YAML Node to decode.
+    /// - parameter userInfo: Additional key/values which can be used when looking up keys to decode.
+    ///
+    /// - returns: Returns the decoded type `T`.
+    ///
+    /// - throws: `DecodingError` or `YamlError` if something went wrong while decoding.
+    public func decode<T>(_ type: T.Type = T.self,
+                          from yamlData: Data,
+                          configuration: T.DecodingConfiguration,
+                          userInfo: [CodingUserInfoKey: Any]) throws -> T where T: DecodableWithConfiguration {
+        guard let yamlString = String(data: yamlData, encoding: options.encoding.swiftStringEncoding) else {
+            throw YamlError.dataCouldNotBeDecoded(encoding: options.encoding.swiftStringEncoding)
+        }
+
+        return try withExtendedLifetime(configuration) {
+            try self.processNode(type, from: yamlString, userInfo: userInfo) { type, node, userInfo in
+                try self.decode(type, from: node, configuration: configuration, userInfo: userInfo)
+            }
+        }
+    }
+
+    public func decode<T>(_ type: T.Type = T.self,
+                          from node: Node,
+                          configuration: T.DecodingConfiguration,
+                          userInfo: [CodingUserInfoKey: Any] = [:]) throws -> T where T: Foundation.DecodableWithConfiguration { // swiftlint:disable:this line_length
+        let decoder = decoder(from: node, userInfo: userInfo)
+        return try T.init(from: decoder, configuration: configuration)
+    }
+}
 
 // swiftlint:disable:this file_length
