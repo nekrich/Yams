@@ -281,6 +281,9 @@ public final class Emitter {
         /// Redundancy aliasing strategy to use when encoding. Defaults to nil
         public var redundancyAliasingStrategy: RedundancyAliasingStrategy?
 
+        /// Encoding used to convert emitted `String` to `Data`.
+        public var encoding: Parser.Encoding = .default
+
         /// Create `Emitter.Options` with the specified values.
         ///
         /// - parameter canonical:     Set if the output should be in the "canonical" format described in the YAML
@@ -306,7 +309,8 @@ public final class Emitter {
                     sortKeys: Bool = false, sequenceStyle: Node.Sequence.Style = .any,
                     mappingStyle: Node.Mapping.Style = .any,
                     newLineScalarStyle: Node.Scalar.Style = .any,
-                    redundancyAliasingStrategy: RedundancyAliasingStrategy? = nil) {
+                    redundancyAliasingStrategy: RedundancyAliasingStrategy? = nil,
+                    encoding: Parser.Encoding = .default) {
             self.canonical = canonical
             self.indent = indent
             self.width = width
@@ -320,6 +324,7 @@ public final class Emitter {
             self.mappingStyle = mappingStyle
             self.newLineScalarStyle = newLineScalarStyle
             self.redundancyAliasingStrategy = redundancyAliasingStrategy
+            self.encoding = encoding
         }
     }
 

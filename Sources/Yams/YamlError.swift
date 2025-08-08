@@ -81,6 +81,11 @@ public enum YamlError: Error {
     /// - parameter encoding: The string encoding used to decode the string data.
     case dataCouldNotBeDecoded(encoding: String.Encoding)
 
+    /// String could not be encoded to Data with the specified encoding.
+    ///
+    /// - parameter encoding: The string encoding used to encode the string.
+    case stringCouldNotBeEncoded(encoding: String.Encoding)
+
     /// Multiple uses of the same key detected in a mapping
     ///
     /// - parameter duplicates: A dictionary keyed by the duplicated node value, with all nodes that duplicate the value
@@ -187,6 +192,8 @@ extension YamlError: CustomStringConvertible {
             return problem
         case .dataCouldNotBeDecoded(encoding: let encoding):
             return "String could not be decoded from data using '\(encoding)' encoding"
+        case .stringCouldNotBeEncoded(encoding: let encoding):
+            return "String could not be encoded to data using '\(encoding)' encoding"
         case let .duplicatedKeysInMapping(duplicates, context):
             let duplicateKeys = duplicates.sorted().map { "'\($0)'" }.joined(separator: ", ")
             return """
