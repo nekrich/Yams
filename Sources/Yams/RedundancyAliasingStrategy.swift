@@ -95,7 +95,7 @@ public class StrictEncodableAliasingStrategy: RedundancyAliasingStrategy {
     private let encoder = YAMLEncoder()
 
     public func alias(for encodable: any Encodable) throws -> RedundancyAliasingOutcome {
-        let coded = try encoder.encode(encodable)
+        let coded: String = try encoder.encode(encodable)
         if let existing = codedToAliases[coded] {
             return .alias(existing)
         } else {

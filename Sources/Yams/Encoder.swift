@@ -6,6 +6,8 @@
 //  Copyright (c) 2017 Yams. All rights reserved.
 //
 
+import Foundation
+
 /// `Codable`-style `Encoder` that can be used to encode an `Encodable` type to a YAML string using optional
 /// user info mapping. Similar to `Foundation.JSONEncoder`.
 public class YAMLEncoder {
@@ -27,17 +29,50 @@ public class YAMLEncoder {
     ///
     /// - throws: `EncodingError` if something went wrong while encoding.
     public func encode<T: Swift.Encodable>(_ value: T, userInfo: [CodingUserInfoKey: Any] = [:]) throws -> String {
-        do {
-            var finalUserInfo = userInfo
-            if let aliasingStrategy = options.redundancyAliasingStrategy {
-                finalUserInfo[.redundancyAliasingStrategyKey] = aliasingStrategy
-            }
-            let encoder = _Encoder(userInfo: finalUserInfo,
-                                   sequenceStyle: options.sequenceStyle,
-                                   mappingStyle: options.mappingStyle,
-                                   newlineScalarStyle: options.newLineScalarStyle)
+        try encode(value, userInfo: userInfo) { value, encoder in
             var container = encoder.singleValueContainer()
             try container.encode(value)
+        }
+    }
+
+    /// Encode a value of type `T` to a YAML data.
+    ///
+    /// - parameter value:    Value to encode.
+    /// - parameter userInfo: Additional key/values which can be used when looking up keys to encode.
+    ///
+    /// - returns: The data containing encoded YAML string.
+    ///
+    /// - throws: `EncodingError` or `YamlError` if something went wrong while encoding.
+    public func encodeToData<T: Swift.Encodable>(_ value: T, userInfo: [CodingUserInfoKey: Any] = [:]) throws -> Data {
+        let yamlString: String = try encode(value, userInfo: [:])
+
+        guard let yamlData = yamlString.data(using: options.encoding.swiftStringEncoding) else {
+            throw YamlError.stringCouldNotBeEncoded(encoding: options.encoding.swiftStringEncoding)
+        }
+
+        return yamlData
+    }
+}
+
+extension YAMLEncoder {
+    private func encoder(userInfo: [CodingUserInfoKey: Any]) -> _Encoder {
+        var finalUserInfo = userInfo
+        if let aliasingStrategy = options.redundancyAliasingStrategy {
+            finalUserInfo[.redundancyAliasingStrategyKey] = aliasingStrategy
+        }
+        let encoder = _Encoder(userInfo: finalUserInfo,
+                               sequenceStyle: options.sequenceStyle,
+                               mappingStyle: options.mappingStyle,
+                               newlineScalarStyle: options.newLineScalarStyle)
+        return encoder
+    }
+
+    private func encode<T>(_ value: T,
+                           userInfo: [CodingUserInfoKey: Any],
+                           with encodingBlock: (T, _Encoder) throws -> Void) throws -> String {
+        do {
+            let encoder = encoder(userInfo: userInfo)
+            try encodingBlock(value, encoder)
             try options.redundancyAliasingStrategy?.releaseAnchorReferences()
             return try serialize(node: encoder.node, options: options)
         } catch let error as EncodingError {
@@ -49,6 +84,55 @@ public class YAMLEncoder {
                                                 underlyingError: error)
             throw EncodingError.invalidValue(value, context)
         }
+    }
+}
+
+// MARK: TopLevelDecoder
+
+#if canImport(Combine)
+import protocol Combine.TopLevelEncoder
+
+extension YAMLEncoder: TopLevelEncoder {
+    public typealias Output = Data
+
+    public func encode<T>(_ value: T) throws -> Data where T: Encodable {
+        let yamlString: String = try encode(value, userInfo: [:])
+        guard let yamlData = yamlString.data(using: options.encoding.swiftStringEncoding) else {
+            throw YamlError.stringCouldNotBeEncoded(encoding: options.encoding.swiftStringEncoding)
+        }
+        return yamlData
+    }
+}
+#endif
+
+// MARK: DecodableWithConfiguration
+
+@available(macOS 14, iOS 17, tvOS 17, watchOS 10, *)
+extension YAMLEncoder {
+    public func encode<T, C>(_ value: T,
+                             configuration: C.Type,
+                             userInfo: [CodingUserInfoKey: Any] = [:]) throws -> Data where T: Foundation.EncodableWithConfiguration, C: EncodingConfigurationProviding, T.EncodingConfiguration == C.EncodingConfiguration { // swiftlint:disable:this line_length
+        try self.encode(value, configuration: configuration.encodingConfiguration, userInfo: userInfo)
+    }
+
+    public func encode<T>(_ value: T,
+                          configuration: T.EncodingConfiguration,
+                          userInfo: [CodingUserInfoKey: Any] = [:]) throws -> String where T: Foundation.EncodableWithConfiguration { // swiftlint:disable:this line_length
+        try encode(value, userInfo: userInfo) { value, encoder in
+            try value.encode(to: encoder, configuration: configuration)
+        }
+    }
+
+    public func encode<T>(_ value: T,
+                          configuration: T.EncodingConfiguration,
+                          userInfo: [CodingUserInfoKey: Any] = [:]) throws -> Data where T: Foundation.EncodableWithConfiguration { // swiftlint:disable:this line_length
+        let yamlString: String = try encode(value, configuration: configuration, userInfo: userInfo)
+
+        guard let yamlData = yamlString.data(using: options.encoding.swiftStringEncoding) else {
+            throw YamlError.stringCouldNotBeEncoded(encoding: options.encoding.swiftStringEncoding)
+        }
+
+        return yamlData
     }
 }
 
@@ -369,3 +453,5 @@ private func serialize(node: Node, options: Emitter.Options) throws -> String {
         version: options.version,
         sortKeys: options.sortKeys)
 }
+
+// swiftlint:disable:this file_length

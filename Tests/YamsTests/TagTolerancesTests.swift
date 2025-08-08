@@ -30,7 +30,7 @@ class TagTolerancesTests: XCTestCase {
                             extraneousValue: 3)
 
         let encoder = YAMLEncoder()
-        let producedYAML = try encoder.encode(value)
+        let producedYAML: String = try encoder.encode(value)
         XCTAssertEqual(producedYAML, expectedYAML, "Produced YAML not identical to expected YAML.")
     }
 
@@ -53,7 +53,7 @@ class TagTolerancesTests: XCTestCase {
                             extraneousValue: 3)
 
         let encoder = YAMLEncoder()
-        let producedYAML = try encoder.encode(value)
+        let producedYAML: String = try encoder.encode(value)
         XCTAssertEqual(producedYAML, expectedYAML, "Produced YAML not identical to expected YAML.")
     }
 
@@ -75,7 +75,7 @@ class TagTolerancesTests: XCTestCase {
                             extraneousValue: 3)
 
         let encoder = YAMLEncoder()
-        let producedYAML = try encoder.encode(value)
+        let producedYAML: String = try encoder.encode(value)
         XCTAssertEqual(producedYAML, expectedYAML, "Produced YAML not identical to expected YAML.")
     }
 

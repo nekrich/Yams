@@ -302,7 +302,7 @@ final class EncoderTests: XCTestCase, @unchecked Sendable { // swiftlint:disable
 
     func testDecodingConcreteTypeParameter() {
         let encoder = YAMLEncoder()
-        guard let yaml = try? encoder.encode(Employee.testValue) else {
+        guard let yaml: String = try? encoder.encode(Employee.testValue) else {
             expectUnreachable("Unable to encode Employee.")
             return
         }
@@ -451,7 +451,7 @@ where T: Codable, T: Equatable {
     do {
         let encoder = YAMLEncoder()
         encoder.options = options
-        let producedYAML = try encoder.encode(value)
+        let producedYAML: String = try encoder.encode(value)
 
         if let expectedYAML = yamlString {
             XCTAssertEqual("\n"+producedYAML, "\n"+expectedYAML, "Produced YAML not identical to expected YAML.",
